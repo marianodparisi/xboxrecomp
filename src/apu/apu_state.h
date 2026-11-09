@@ -119,6 +119,8 @@ typedef struct DSPState {
     int save_cycles;
     uint32_t interrupts;
     uint32_t frame_starts_pending;
+    uint32_t idle_polls, idle_poll_value;
+    bool idle_parked;
     uint32_t timer_ctl, timer_period;
     uint64_t timer_base, cycles_base;
     bool engine_ready;
@@ -466,6 +468,9 @@ struct MCPXAPUState {
     QemuCond idle_cond;
     QemuCond lock_handoff_cond;
     volatile LONG lock_waiters;
+    /* The interrupt guard found the lock busy and left the line up: the next
+     * epoch hands the lock off, as for a blocked caller (mcpx_apu_irq_service_try). */
+    volatile LONG irq_service_declined;
     bool lock_handoff_waiting; /* Protected by lock. */
     bool pause_requested;
     bool is_idle;
