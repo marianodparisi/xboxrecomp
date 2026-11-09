@@ -30,7 +30,7 @@
 
 #define PCM_NAME 40
 #define PCM_SPEC 120
-#define PCM_PAGES 24
+#define PCM_PAGES 32
 #define PCM_ITEMS 12
 #define PCM_TEXTS 10
 #define PCM_CMDS 5
@@ -78,6 +78,7 @@ typedef struct Page {
     float list_x, list_y, step, col1, col2, item_size;
     float logo_x, logo_y, title_x, title_y, prompt_x, prompt_y, prompt_step, bar_w, rail_l, rail_r;
     int focus, no_logo, plain_focus;
+    char focus_from[PCM_NAME];     /* the first focus is item (this game number + 1), or the nearest one above it */
     float values_x;                /* item values right-aligned at this x (0: at the first column, left-aligned) */
     float sep[4][3];               /* separator lines: x1, y, x2 */
     int nsep;
@@ -494,6 +495,11 @@ static int parse_page_key(Parse *ps, Page *p, const char *key, char *val)
     }
     if (!_stricmp(key, "item_size")) {
         if (!parse_float(val, &p->item_size)) { perr(ps, "bad item_size", NULL); return 0; }
+        return 1;
+    }
+    if (!_stricmp(key, "focus_from")) {
+        if (!*val || strlen(val) >= PCM_NAME) { perr(ps, "focus_from needs the name of a game number", NULL); return 0; }
+        copy(p->focus_from, PCM_NAME, val);
         return 1;
     }
     if (!_stricmp(key, "focus")) {
@@ -1043,7 +1049,8 @@ static const char *resolve(const PcMenuHost *host, const char *s)
     return s;
 }
 
-/* "NAME" is true when the game's number is non-zero, "NAME=N" when it is N; "!" in front turns it round.
+/* "NAME" is true when the game's number is non-zero, "NAME=N" when it is N, "NAME>N" / "NAME<N" when it is above /
+ * below N; "!" in front turns it round.
  * "@NAME" is a menu variable (set by an earlier page). */
 static int cond_true(const PcMenuHost *host, const char *cond)
 {
@@ -1052,14 +1059,14 @@ static int cond_true(const PcMenuHost *host, const char *cond)
     const char *eq;
     if (!cond[0]) return 1;
     copy(name, PCM_NAME, cond + neg);
-    eq = strchr(cond + neg, '=');
+    eq = strpbrk(cond + neg, "=<>");
     if (eq) name[eq - (cond + neg)] = 0;
     if (name[0] == '@') {
         const char *s = var_lookup(host, name + 1);
         is = eq ? (s && !strcmp(s, eq + 1)) : (s && s[0] && strcmp(s, "0"));
     } else {
         if (!host->value || !host->value(host->ctx, name, &v)) v = 0;
-        is = eq ? v == atoi(eq + 1) : v != 0;
+        is = !eq ? v != 0 : *eq == '>' ? v > atoi(eq + 1) : *eq == '<' ? v < atoi(eq + 1) : v == atoi(eq + 1);
     }
     return neg ? !is : is;
 }
@@ -1933,6 +1940,11 @@ static void first_focus(const PcMenuHost *host, const Page *p, double t)
     int f;
     if (m_focus >= 0 || !p->nitem) return;
     f = p->focus;
+    if (p->focus_from[0] && host->value && host->value(host->ctx, p->focus_from, &f)) {
+        if (f < 0) f = 0;
+        if (f >= p->nitem) f = p->nitem - 1;
+        while (f > 0 && !item_focusable(host, &p->item[f])) f--;
+    }
     if (!item_focusable(host, &p->item[f])) f = step_focus(host, p, f, 1);
     m_focus = m_prev_focus = f;
     m_focus_t0 = t - 10;

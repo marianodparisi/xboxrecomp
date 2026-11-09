@@ -372,6 +372,12 @@ static void monitor_submit_packet(MCPXAPUState *d, int packet_samples,
                                   int prime_packet)
 {
     int xa2_active = xa2_is_active();
+    {
+        /* RECOMP_APU_MUTE=1 (unattended test runs): output silence; everything upstream runs as usual. */
+        static int mute = -1;
+        if (mute < 0) { const char *e = getenv("RECOMP_APU_MUTE"); mute = e && *e && *e != '0'; }
+        if (mute) memset(g_monitor_packet.samples, 0, (size_t)packet_samples * 2u * sizeof(int16_t));
+    }
     int accepted = 0;
     unsigned queued_buffers = 0;
     uint64_t start_failed_delta = 0;

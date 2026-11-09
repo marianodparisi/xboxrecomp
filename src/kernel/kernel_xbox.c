@@ -10,6 +10,7 @@
  */
 
 #include "kernel.h"
+#include <stdlib.h>
 #include <string.h>
 
 /* ============================================================================
@@ -91,10 +92,31 @@ static ULONG xbox_eeprom_checksum(const UCHAR* bytes, size_t length)
     return ~(ULONG)sum;
 }
 
+/* The console language (XC_LANGUAGE): 1 English, 2 Japanese, 3 German,
+ * 4 French, 5 Spanish, 6 Italian, 7 Korean, 8 Chinese, 9 Portuguese.
+ * RECOMP_XBOX_LANGUAGE selects one; titles with official banks for it then
+ * load their own localized text. Anything else keeps English. */
+static ULONG xbox_console_language(void)
+{
+    const char* setting = getenv("RECOMP_XBOX_LANGUAGE");
+    char* end = NULL;
+    unsigned long language;
+
+    if (!setting || !*setting)
+        return 1;
+    language = strtoul(setting, &end, 10);
+    if (*end || language < 1 || language > 9) {
+        xbox_log(XBOX_LOG_WARN, XBOX_LOG_XBOX,
+            "RECOMP_XBOX_LANGUAGE=%s is not a console language (1-9); using English", setting);
+        return 1;
+    }
+    return (ULONG)language;
+}
+
 static void xbox_make_default_eeprom(UCHAR image[256])
 {
     LONG timezone_bias = -300;
-    ULONG language = 1;
+    ULONG language = xbox_console_language();
     ULONG video = XC_VIDEO_FLAGS_WIDESCREEN | XC_VIDEO_FLAGS_HDTV;
     ULONG audio = 0;
     ULONG parental = 0;
@@ -196,9 +218,9 @@ NTSTATUS __stdcall xbox_ExQueryNonVolatileSetting(
 
     switch (ValueIndex) {
     case XC_LANGUAGE:
-        /* English = 1 */
+        /* English = 1 unless RECOMP_XBOX_LANGUAGE selects another */
         if (ValueLength >= sizeof(ULONG)) {
-            *(PULONG)Value = 1;
+            *(PULONG)Value = xbox_console_language();
             if (Type) *Type = 4; /* REG_DWORD */
             if (ResultLength) *ResultLength = sizeof(ULONG);
         }
